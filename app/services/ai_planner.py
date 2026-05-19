@@ -289,20 +289,22 @@ async def generate_itinerary(
         ("小众深度", "🟢"),
     ]
 
-    tasks = [
-        _generate_one_itinerary(
-            api_key, departure, destination, days, adults, children, elders,
-            budget, preferences, requirements, travel_date, theme, color
-        )
-        for theme, color in themes
-    ]
+    async def safe_generate(theme, color):
+        try:
+            return await _generate_one_itinerary(
+                api_key, departure, destination, days, adults, children, elders,
+                budget, preferences, requirements, travel_date, theme, color
+            )
+        except Exception:
+            return None
 
+    tasks = [safe_generate(theme, color) for theme, color in themes]
     results = await asyncio.gather(*tasks)
 
     plans = [r for r in results if r is not None]
 
     if not plans:
-        plans = [{"error": "所有方案生成失败，请重试"}]
+        return {"error": "所有方案生成失败，请重试", "options": [], "total": 0}
 
     return {"options": plans, "total": len(plans)}
 
