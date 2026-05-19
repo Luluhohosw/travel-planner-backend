@@ -28,8 +28,18 @@ TRANSLATIONS = {
 
 EXCHANGE_RATES = {
     "CNY": {"USD": 0.14, "JPY": 21.5, "KRW": 185, "EUR": 0.127, "GBP": 0.11,
-            "THB": 4.9, "VND": 3400, "HKD": 1.08, "TWD": 4.4, "SGD": 0.187, "MYR": 0.65},
-    "USD": {"CNY": 7.15, "JPY": 153, "EUR": 0.91, "GBP": 0.79, "KRW": 1320, "THB": 35},
+            "THB": 4.9, "VND": 3400, "HKD": 1.08, "TWD": 4.4, "SGD": 0.187, "MYR": 0.65,
+            "AUD": 0.22, "NZD": 0.24, "CAD": 0.19, "CHF": 0.124, "SEK": 1.45,
+            "DKK": 0.97, "NOK": 1.50, "INR": 11.6, "PHP": 7.8, "IDR": 2250,
+            "AED": 0.51, "RUB": 12.8, "MXN": 2.4, "BRL": 0.70, "TRY": 4.5,
+            "ZAR": 2.65, "PLN": 0.56, "CZK": 3.2, "HUF": 50.5, "ILS": 0.51,
+            "SAR": 0.525, "CLP": 130, "ARS": 120, "EGP": 6.6, "NGN": 215},
+    "USD": {"CNY": 7.15, "JPY": 153, "EUR": 0.91, "GBP": 0.79, "KRW": 1320, "THB": 35,
+            "AUD": 1.56, "NZD": 1.71, "CAD": 1.36, "CHF": 0.89, "SEK": 10.3,
+            "DKK": 6.9, "NOK": 10.7, "INR": 83, "PHP": 55.8, "IDR": 16000,
+            "AED": 3.67, "RUB": 91, "MXN": 17.1, "BRL": 5.0, "TRY": 32,
+            "ZAR": 18.9, "PLN": 4.0, "CZK": 23, "HUF": 360, "ILS": 3.65,
+            "SAR": 3.75, "CLP": 930, "ARS": 860, "EGP": 47, "NGN": 1530},
 }
 
 PHRASES = [
@@ -64,8 +74,12 @@ async def exchange_rate(
         result = amount * EXCHANGE_RATES[from_code][to_code]
     elif to_code in EXCHANGE_RATES and from_code in EXCHANGE_RATES[to_code]:
         result = amount / EXCHANGE_RATES[to_code][from_code]
-    elif from_code == "CNY" or to_code == "CNY":
-        result = amount * 7.15 if from_code == "USD" else amount / 7.15
+    elif from_code in EXCHANGE_RATES.get("CNY", {}) and to_code in EXCHANGE_RATES.get("CNY", {}):
+        cny = amount * EXCHANGE_RATES["CNY"][from_code] if from_code in EXCHANGE_RATES["CNY"] else amount / EXCHANGE_RATES["CNY"].get(from_code, 1)
+        result = cny * EXCHANGE_RATES["CNY"][to_code]
+    elif from_code in EXCHANGE_RATES.get("USD", {}) and to_code in EXCHANGE_RATES.get("USD", {}):
+        usd = amount / EXCHANGE_RATES["USD"][from_code] if from_code in EXCHANGE_RATES["USD"] else amount
+        result = usd * EXCHANGE_RATES["USD"][to_code]
     else:
         result = amount
 

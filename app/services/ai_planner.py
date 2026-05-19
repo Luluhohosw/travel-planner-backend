@@ -201,6 +201,73 @@ def _extract_json(text: str) -> dict:
     }
 
 
+async def _generate_one_itinerary(
+    api_key: str,
+    departure: str,
+    destination: str,
+    days: int,
+    adults: int,
+    children: int,
+    elders: int,
+    budget: str,
+    preferences: list,
+    requirements: str,
+    travel_date: str,
+    theme: str,
+    color: str,
+) -> dict:
+    people_desc = f"{adults}位成人"
+    if children > 0:
+        people_desc += f", {children}位儿童"
+    if elders > 0:
+        people_desc += f", {elders}位老人"
+
+    pref_text = "、".join(preferences) if preferences else "无特别偏好"
+    date_info = f"\n出行日期: {travel_date}" if travel_date else ""
+    theme_hint = f"\n## 本次方案风格: {theme}" if theme else ""
+
+    user_message = f"""请为以下旅行需求生成完整的行程规划。
+
+## ⚠️ 首要约束 — 此行核心目的（行程必须围绕此目的展开）
+{requirements if requirements else "无特殊要求"}{theme_hint}
+
+## 基本信息
+出发地: {departure}
+目的地: {destination}
+出行天数: {days}天
+人数: {people_desc}
+预算级别: {budget}
+偏好: {pref_text}{date_info}
+
+请严格按照JSON格式输出，包含overview、daily_plans、attraction_details、food_recommendations、transportation、accommodation、budget、tips_and_warnings、checklist。
+方案标题请在overview中用「{color}」标记风格。
+重要：每日行程必须紧扣上述核心目的，不要生成与该目的无关的通用行程。"""
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_message},
+    ]
+
+    result_text = await _call_deepseek(api_key, messages, max_tokens=6000)
+    result = _extract_json(result_text)
+
+    if isinstance(result, dict) and "error" in result:
+        retry_messages = [
+            {"role": "system", "content": SYSTEM_PROMPT + "\n\n【重要】你上次的回复JSON格式不正确，无法被程序解析。请严格按照JSON规范输出。"},
+            {"role": "user", "content": user_message},
+            {"role": "assistant", "content": "（上一次输出JSON格式有误，请重新生成严格合法的JSON）"},
+        ]
+        result_text = await _call_deepseek(api_key, retry_messages, max_tokens=6000)
+        result = _extract_json(result_text)
+
+    if not isinstance(result, dict) or "error" in result:
+        return None
+
+    result["_theme"] = theme
+    result["_color"] = color
+    return result
+
+
 async def generate_itinerary(
     api_key: str,
     departure: str,
@@ -214,50 +281,30 @@ async def generate_itinerary(
     requirements: str = "",
     travel_date: str = ""
 ) -> dict:
-    people_desc = f"{adults}位成人"
-    if children > 0:
-        people_desc += f", {children}位儿童"
-    if elders > 0:
-        people_desc += f", {elders}位老人"
+    import asyncio
 
-    pref_text = "、".join(preferences) if preferences else "无特别偏好"
-    date_info = f"\n出行日期: {travel_date}" if travel_date else ""
-
-    user_message = f"""请为以下旅行需求生成完整的行程规划。
-
-## ⚠️ 首要约束 — 此行核心目的（行程必须围绕此目的展开）
-{requirements if requirements else "无特殊要求"}
-
-## 基本信息
-出发地: {departure}
-目的地: {destination}
-出行天数: {days}天
-人数: {people_desc}
-预算级别: {budget}
-偏好: {pref_text}{date_info}
-
-请严格按照JSON格式输出，包含日期建议、每日详细行程、景点详情、美食推荐、交通方案、住宿建议、预算明细、注意事项、打包清单。
-
-重要：每日行程必须紧扣上述核心目的，不要生成与该目的无关的通用行程。"""
-
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_message},
+    themes = [
+        ("经典全面", "🔵"),
+        ("美食探店", "🟠"),
+        ("小众深度", "🟢"),
     ]
 
-    result_text = await _call_deepseek(api_key, messages, max_tokens=8000)
-    result = _extract_json(result_text)
+    tasks = [
+        _generate_one_itinerary(
+            api_key, departure, destination, days, adults, children, elders,
+            budget, preferences, requirements, travel_date, theme, color
+        )
+        for theme, color in themes
+    ]
 
-    if isinstance(result, dict) and "error" in result:
-        retry_messages = [
-            {"role": "system", "content": SYSTEM_PROMPT + "\n\n【重要】你上次的回复JSON格式不正确，无法被程序解析。请严格按照JSON规范输出，特别注意：\n1. 字符串中的换行符、引号、反斜杠必须转义\n2. 数组和对象的最后一个元素后不要加逗号\n3. 不要有注释\n4. 确保所有花括号和方括号配对\n5. 只输出纯JSON，不要加任何Markdown代码块标记"},
-            {"role": "user", "content": user_message},
-            {"role": "assistant", "content": "（上一次输出JSON格式有误，请重新生成严格合法的JSON）"},
-        ]
-        result_text = await _call_deepseek(api_key, retry_messages, max_tokens=8000)
-        result = _extract_json(result_text)
+    results = await asyncio.gather(*tasks)
 
-    return result
+    plans = [r for r in results if r is not None]
+
+    if not plans:
+        plans = [{"error": "所有方案生成失败，请重试"}]
+
+    return {"options": plans, "total": len(plans)}
 
 
 async def generate_checklist(
